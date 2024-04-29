@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gRPC-Gateway Stream</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .chat-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .message.received {
+            text-align: left;
+        }
+        .message.sent {
+            text-align: right;
+        }
+        .message-content {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 15px;
+            background-color: #f1f0f0;
+        }
+        .message.sent .message-content {
+            background-color: #007bff;
+            color: #fff;
+        }
+        .button-container {
+            margin-top: 20px;
+        }
+        .input-container {
+            display: flex;
+            margin-top: 20px;
+        }
+        .input-container input {
+            flex-grow: 1;
+            padding: 8px;
+            font-size: 16px;
+        }
+        .input-container button {
+            padding: 8px 16px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+<h1>gRPC-Gateway Stream</h1>
+<div class="chat-container" id="chatContainer"></div>
+<div class="input-container">
+    <input type="text" id="nameInput" placeholder="Enter your name" />
+    <button id="startButton">Start</button>
+</div>
+<div class="button-container">
+    <button id="endButton" disabled>End</button>
+</div>
+<script>
+    const chatContainer = document.getElementById('chatContainer');
+    const nameInput = document.getElementById('nameInput');
+    const startButton = document.getElementById('startButton');
+    const endButton = document.getElementById('endButton');
+    let reader;
+
+    startButton.addEventListener('click', startStream);
+    endButton.addEventListener('click', endStream);
+
+    async function startStream() {
+        const name = nameInput.value;
+        if (name.trim() !== '') {
+            nameInput.disabled = true;
+            startButton.disabled = true;
+            endButton.disabled = false;
+            const response = await fetch(`http://localhost:8090/v1/hello?name=${encodeURIComponent(name)}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            console.log('HTTP response status:', response.status);
+            console.log('HTTP response headers:', response.headers);
+            reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    console.log('Stream closed');
+                    break;
+                }
+                const decodedValue = decoder.decode(value);
+                console.log('Received data:', decodedValue);
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message', 'received');
+                messageElement.innerHTML = `<div class="message-content">${decodedValue}</div>`;
+                chatContainer.appendChild(messageElement);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            nameInput.disabled = false;
+            startButton.disabled = false;
+            endButton.disabled = true;
+        }
+    }
+
+    function endStream() {
+        if (reader) {
+            reader.cancel();
+            console.log('Stream cancelled');
+        }
+    }
+</script>
+</body>
+</html>
