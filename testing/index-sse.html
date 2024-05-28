@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Client</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@17.0.2/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.14.3/babel.min.js"></script>
+
+<script type="text/babel">
+    const SSEClient = () => {
+        const messagesRef = React.useRef(null);
+        const [messages, setMessages] = React.useState([]);
+        const [latestMessage, setLatestMessage] = React.useState('');
+        const [sessionId, setSessionId] = React.useState('8aaacb423a753ec96e226b102e868b19a4c48d1818f825947dad87598f810b9d');
+
+        React.useEffect(() => {
+            const eventSource = new EventSource(`http://localhost:8091/sse/${sessionId}`);
+
+            eventSource.addEventListener('output', (event) => {
+                const data = event.data;
+                const id = event.lastEventId;
+                const message = `ID: ${id} - ${data}`;
+
+                setMessages((prevMessages) => [...prevMessages, message]);
+                setLatestMessage(message);
+            });
+
+            return () => {
+                eventSource.close();
+            };
+        }, [sessionId]);
+
+        React.useEffect(() => {
+            if (messagesRef.current) {
+                messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+            }
+        }, [messages]);
+
+        const handleSessionIdChange = (event) => {
+            setSessionId(event.target.value);
+        };
+
+        return (
+            <div className="container">
+                <div className="columns">
+                    <div className="column is-one-fifth">
+                        <div className="field">
+                            <label className="label">Session ID</label>
+                            <div className="control">
+                                <input
+                                    className="input"
+                                    type="text"
+                                    value={sessionId}
+                                    onChange={handleSessionIdChange}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="column">
+                        <h1 className="title has-text-centered">SSE Results</h1>
+                        <div className="box">
+                            <div ref={messagesRef} className="results" style={{ height: '400px', overflowY: 'auto', marginBottom: '20px' }}>
+                                {messages.map((message, index) => (
+                                    <p key={index}>{message}</p>
+                                ))}
+                            </div>
+                            <div className="notification is-info">
+                                <h2 className="subtitle">Latest Message</h2>
+                                <p>{latestMessage}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    ReactDOM.render(<SSEClient />, document.getElementById('root'));
+</script>
+</body>
+</html>
