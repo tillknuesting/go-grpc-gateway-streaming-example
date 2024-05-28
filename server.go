@@ -68,44 +68,51 @@ type captureResponseWriter struct {
 }
 
 func (mw *captureResponseWriter) Write(b []byte) (int, error) {
-	if len(b) > 1 {
+	if len(b) > 1 { // TODO tillknuesting: Verify why there are []bytes with len <2
 		mw.DataChan <- b
 	}
 	return mw.ResponseWriter.Write(b)
 }
 
+// Unwrap is used by the ResponseController in the grpc-gateway runtime to flush
+// if method is not present there would be a server error.
 func (mw *captureResponseWriter) Unwrap() http.ResponseWriter {
 	return mw.ResponseWriter
 }
 
-var dataChanMap sync.Map // Map to store data channels by session UUID
+var dataChanMap sync.Map // Map to store data channels by session UUID.
 
 // SessionMetadata holds the session ID and source instance ID.
 type SessionMetadata struct {
 	SessionUUID string `json:"session_uuid"`
 	// Source instance identifier is used for network routing scenarios
+	// for example could be included as header in the SSE request to make sure
+	// it is getting routed to the initiating server e.g. running a pod
 	SourceInstanceID string `json:"source_instance_id"`
 }
 
+// generateSecureSessionID generated a cryptographic secure session token to be used
+// to the url of the sse handler.
 func generateSecureSessionID() string {
 	generatedUUID := uuid.New().String()
 	hash := sha256.Sum256([]byte(generatedUUID))
 	return fmt.Sprintf("%x", hash)
 }
 
+// sseResponseStreamingMiddleware intercepts requests with X-Use-SSE header present
+// and gives back immediately a session token. It continues calling the grpc-gateway
+// endpoint and streams data to the SSE handler using the session ID token.
 func sseResponseStreamingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Use-SSE") == "true" {
 
 			sessionUUID := generateSecureSessionID()
-			dataChan := make(chan []byte, 1000)
+			dataChan := make(chan []byte, 10) //TODO tillknuesting: Make the buffer configurable
 			dataChanMap.Store(sessionUUID, dataChan)
-
-			sourceInstanceID := "my_server1" // Replace with your source instance identifier
 
 			sessionData := SessionMetadata{
 				SessionUUID:      sessionUUID,
-				SourceInstanceID: sourceInstanceID,
+				SourceInstanceID: "test-server-1", // TODO tillknuesting: get with from env
 			}
 
 			// Marshal session metadata into JSON
@@ -203,6 +210,7 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		eventIDCounter = 0
 	}
+
 	fmt.Fprintf(w, "event: done\n")
 	fmt.Fprintf(w, "id: %d:%d\n", currentTimestamp, eventIDCounter)
 	fmt.Fprintf(w, "data: {}\n\n")
